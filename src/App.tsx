@@ -404,6 +404,9 @@ export default function App() {
 
         if (!res.ok) {
           const errText = await res.text();
+          if (res.status === 429 || errText.includes("RESOURCE_EXHAUSTED") || errText.includes("quota")) {
+            throw new Error(`Limite de Cota do Gemini Excedido (429 RESOURCE_EXHAUSTED). Sua chave da API do Gemini está na Cota Gratuita do Google, que permite poucas requisições por minuto. Aguarde 1 a 2 minutos para liberar e tente de novo, ou mude a chave para uma com faturamento ativado (Pay-as-you-go).`);
+          }
           throw new Error(`API Gemini (${model}) respondeu com status ${res.status}: ${errText}`);
         }
 
@@ -969,6 +972,13 @@ MISSIONS & SKILLS ACTIVATED:
 3. Smooth kinetic scrolling: Every section has staggered slide revelations via GSAP.
 4. Custom immersive cursors with mix-blend-mode:difference.
 5. Absolute responsiveness: Looks spectacular on ultra-wide desktop monitor down to fine smartphones.
+6. COMPONENT TRANSFORMATION & INTEGRATION (e.g. from 21.dev, MagicUI, Shadcn, Aceternity):
+   If the user's prompt contains React (.tsx) components, Tailwind elements, custom modules, or references npm libraries (such as 'three', 'framer-motion', 'next-themes', '@react-three/fiber'):
+   - You MUST translate and compile these component structures into fully functional, production-ready pure HTML, CSS (using Tailwind CDN v4/v3), and vanilla browser JavaScript!
+   - For Three.js (like 3D dotted surfaces or particle meshes): Add the CDN script '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>' in the <head> and implement the scene, camera, renderer, resize handlers, particle geometry, and requestAnimationFrame render loop directly in a vanilla <script> tag.
+   - For next-themes or theme contexts: Translate the theme logic to check/toggle classes on the document element (e.g., toggling a 'dark' class on <html>).
+   - For Lucide React icons or others: Use lucide CDN '<script src="https://unpkg.com/lucide@latest"></script>' and use '<i data-lucide="icon-name"></i>' tags, then trigger 'lucide.createIcons();' inside your main script, or write inline SVGs.
+   - NEVER output React code, import statements, next/client-side wrappers, or typescript syntax. The resulting file must run out-of-the-box in a standard browser/iframe.
 
 YOUR PARADIGM:
 Generate a complete, fully operational, single-file HTML landing page based on the parameters. No incomplete mockups. Return ONLY the complete HTML. Do NOT wrap inside markdown fences. Start directly with <!DOCTYPE html> and end with </html>.
