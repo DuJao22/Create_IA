@@ -347,6 +347,79 @@ export default function App() {
     return headers;
   };
 
+  // Helper function to call Gemini API directly from browser if hosted on a static server like Vercel
+  const callGeminiClientSide = async (
+    prompt: string,
+    systemInstruction?: string,
+    responseSchema?: any,
+    responseMimeType?: string
+  ): Promise<string> => {
+    const apiKey = geminiApiKey || localStorage.getItem("layon_gemini_api_key") || "";
+    if (!apiKey) {
+      throw new Error(
+        "Chave de API do Gemini não configurada localmente. Como o servidor Express não está rodando diretamente no Vercel (hospedagem estática), você deve clicar na engrenagem no topo para configurar e salvar sua chave da API do Gemini."
+      );
+    }
+
+    const models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+    let lastError: any = null;
+
+    for (const model of models) {
+      try {
+        addLog(`[Vercel Fallback] Tentando chamar o modelo direct-client ${model}...`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        
+        const requestBody: any = {
+          contents: [
+            {
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.7
+          }
+        };
+
+        if (systemInstruction) {
+          requestBody.systemInstruction = {
+            parts: [{ text: systemInstruction }]
+          };
+        }
+
+        if (responseMimeType) {
+          requestBody.generationConfig.responseMimeType = responseMimeType;
+        }
+
+        if (responseSchema) {
+          requestBody.generationConfig.responseSchema = responseSchema;
+        }
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`API Gemini (${model}) respondeu com status ${res.status}: ${errText}`);
+        }
+
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          return text;
+        }
+        throw new Error("Resposta recebida sem bloco de texto válido.");
+      } catch (err: any) {
+        console.warn(`Tentativa com ${model} falhou:`, err.message || err);
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error("Falha ao contatar API do Gemini diretamente do navegador.");
+  };
+
   // Safe list fetch engine (incorporating local storage fallback and real SQLite Cloud support)
   const loadSavedProjects = async () => {
     const savedHost = localStorage.getItem("layon_sqlite_host");
@@ -975,18 +1048,43 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
 
     try {
       const customHeaders = getHeaders();
-      const res = await fetch("/api/generate-html", {
-        method: "POST",
-        headers: customHeaders,
-        body: JSON.stringify({ systemPrompt, userPrompt })
-      });
+      let data;
+      try {
+        const res = await fetch("/api/generate-html", {
+          method: "POST",
+          headers: customHeaders,
+          body: JSON.stringify({ systemPrompt, userPrompt })
+        });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro de servidor: Código HTTP ${res.status}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Erro de servidor: Código HTTP ${res.status}`);
+        }
+
+        // Test if response is JSON (Vercel redirects might return index.html)
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error("Resposta do servidor não está em formato JSON.");
+        }
+        data = await res.json();
+      } catch (apiErr: any) {
+        addLog(`[Vercel/Static Mode] API do servidor falhou: ${apiErr.message}. Acionando fallback de geração direta do navegador...`);
+        const responseText = await callGeminiClientSide(userPrompt, systemPrompt);
+        
+        let cleanedHtml = responseText
+          .replace(/^```html\s*/i, "")
+          .replace(/^```\s*/, "")
+          .replace(/```\s*$/, "")
+          .trim();
+
+        if (!cleanedHtml.startsWith("<!DOCTYPE") && !cleanedHtml.startsWith("<html")) {
+          const match = cleanedHtml.match(/(<!DOCTYPE[\s\S]*)/i);
+          if (match) cleanedHtml = match[1];
+        }
+
+        data = { html: cleanedHtml };
       }
 
-      const data = await res.json();
       addLog("Página compilada recebida com sucesso! Higienizando tags de encapsulamento...");
       
       const cleanHtml = data.html;
@@ -1163,18 +1261,119 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
 
     try {
       const customHeaders = getHeaders();
-      const res = await fetch("/api/suggest-content", {
-        method: "POST",
-        headers: customHeaders,
-        body: JSON.stringify({ idea })
-      });
+      let data;
+      try {
+        const res = await fetch("/api/suggest-content", {
+          method: "POST",
+          headers: customHeaders,
+          body: JSON.stringify({ idea })
+        });
 
-      if (!res.ok) {
-        throw new Error(`Código de erro HTTP ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`Código de erro HTTP ${res.status}`);
+        }
+
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error("Resposta do servidor não é um JSON válido.");
+        }
+
+        data = await res.json();
+      } catch (apiErr: any) {
+        addLog(`[Vercel/Static Mode] API de sugestão falhou: ${apiErr.message}. Iniciando processamento local direto no seu navegador...`);
+        
+        const clientResponseSchema = {
+          type: "OBJECT",
+          properties: {
+            brandName: { type: "STRING", description: "Nome elegante do negócio" },
+            headline: { type: "STRING", description: "Título magnético principal" },
+            subheadline: { type: "STRING", description: "Subtítulo de apoio da Hero" },
+            about: { type: "STRING", description: "Parágrafo institucional/Parágrafo sobre" },
+            ctaText: { type: "STRING", description: "Texto de ação do botão principal" },
+            ctaLink: { type: "STRING", description: "Link de ação (geralmente #contato)" },
+            aiContext: { type: "STRING", description: "Descrição do tom e do público direcionados ao Gemini" },
+            features: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  id: { type: "STRING" },
+                  icon: { type: "STRING", description: "Ícone CamelCase do Lucide válido (ex: Brain, Cpu, Sparkles, Layers, Activity, Zap, Shield, Globe)" },
+                  title: { type: "STRING" },
+                  desc: { type: "STRING" }
+                },
+                required: ["id", "icon", "title", "desc"]
+              }
+            },
+            stats: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  id: { type: "STRING" },
+                  val: { type: "STRING" },
+                  label: { type: "STRING" }
+                },
+                required: ["id", "val", "label"]
+              }
+            },
+            testimonials: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  id: { type: "STRING" },
+                  quote: { type: "STRING" },
+                  author: { type: "STRING" },
+                  role: { type: "STRING" }
+                },
+                required: ["id", "quote", "author", "role"]
+              }
+            }
+          },
+          required: ["brandName", "headline", "subheadline", "about", "ctaText", "ctaLink", "aiContext", "features", "stats", "testimonials"]
+        };
+
+        const suggestSystemInstruction = `Você é um Copywriter e Diretor Criativo Senior da Apple ou Stripe.
+Sua missão é pegar a ideia bruta fornecida pelo usuário e estruturar o conteúdo de uma Landing Page cinematográfica e de altíssimo luxo corporativo.
+A resposta DEVE obrigatoriamente estar em formato JSON estrito, compatível com as propriedades do objeto Schema do Layout.
+Forneça textos em Português do Brasil (pt-BR), com tom altamente persuasivo, técnico de alta convicção e inspirador.
+
+REGRAS DE CONTEÚDO:
+1. brandName: Nome exclusivo, imponente e sofisticado para o negócio (pense em nomes curtos, elegantes, marcantes).
+2. headline: Um título de herói extremamente magnético de até 8 a 10 palavras. Nada de frases clichês ("Sua melhor escolha"). Foque no novo paradigma.
+3. subheadline: Uma linha de apoio profunda, técnica e envolvente de 15 a 20 palavras que explica o valor real do amanhã.
+4. about: Um parágrafo "Quem Somos / Manifesto" impactante e poético sobre o domínio ou solução idealizada.
+5. ctaText: O texto do botão de ação principal (ex: "Iniciar jornada", "Construir agora", "Desbloquear acesso", "Falar com Engenheiro").
+6. ctaLink: Geralmente "#contato" ou "#cta".
+7. aiContext: Uma instrução interna para o motor de layout sobre a identidade da marca, tom do site e público-alvo (para guiar customizações futuras).
+8. features: Exatamente 4 características ou diferenciais de grife exclusivos. Cada uma deve ter:
+   - id: "f1", "f2", "f3", "f4"
+   - icon: Um ícone Lucide válido exatamente em CamelCase (ex: "Brain", "Cpu", "Sparkles", "Layers", "Activity", "Zap", "Shield", "Globe")
+   - title: Título curto de até 3 palavras
+   - desc: Um parágrafo resumido e inspirador sobre este item
+9. stats: Exatamente 4 métricas expressivas e verossímeis condizentes com o setor sugerido. Cada uma deve ter:
+   - id: "s1", "s2", "s3", "s4"
+   - val: O número ou indicador (ex: "99.8%", "12x", "40M+", "0ms")
+   - label: O rótulo explicativo curto
+10. testimonials: Exatamente 1 depoimento memorável e envolvente de um cliente fictício de alto relevo. Cada um deve ter:
+   - id: "t1"
+   - quote: Uma declaração assertiva e detalhada sobre o impacto provocado
+   - author: Um nome próprio realista
+   - role: Cargo de alto nível (ex: "Director of Product", "Founder", "Chief Executive")`;
+
+        const responseText = await callGeminiClientSide(
+          `Construa todo o conteúdo da landing page com base nesta ideia crua do negócio: ${idea}`,
+          suggestSystemInstruction,
+          clientResponseSchema,
+          "application/json"
+        );
+
+        const parsed = JSON.parse(responseText.trim());
+        data = { success: true, ...parsed };
       }
 
-      const data = await res.json();
-      if (data.success) {
+      if (data && data.success) {
         setBrandName(data.brandName || "Luxury Brand");
         setHeadline(data.headline || "");
         setSubheadline(data.subheadline || "");
