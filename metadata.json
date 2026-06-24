@@ -1,0 +1,8 @@
+{
+  "name": "Remix: LayonDevs AI Page Generator",
+  "description": "Uma plataforma SaaS premium e minimalista para gerar, visualizar e customizar landing pages cinematográficas em tempo real com inteligência artificial, editor interativo e persistência headless.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
