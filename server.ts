@@ -354,6 +354,72 @@ app.delete("/api/projects/:id", async (req, res) => {
   }
 });
 
+// REBUILD SQLITE CLOUD STRUCTURE FROM SCRATCH
+app.post("/api/rebuild-db", async (req, res) => {
+  const sqHost = req.headers["x-sqlite-cloud-host"] as string;
+  const sqApiKey = req.headers["x-sqlite-cloud-apikey"] as string;
+  const sqDbName = req.headers["x-sqlite-cloud-dbname"] as string;
+
+  if (!sqHost || !sqApiKey || !sqDbName) {
+    res.status(400).json({ error: "Credenciais do SQLite Cloud não fornecidas nos cabeçalhos." });
+    return;
+  }
+
+  try {
+    console.log("[SQLITE CLOUD] Reconstrução completa de tabelas solicitada.");
+    
+    // Step 1: DROP TABLE if exists to clear out any incompatible structure or data corruption
+    try {
+      await querySQLiteCloud(sqHost, sqApiKey, sqDbName, "DROP TABLE IF EXISTS projects;");
+    } catch (dropErr: any) {
+      console.warn("[SQLITE CLOUD] Erro ao dropar tabela projects (pode não existir):", dropErr.message);
+    }
+
+    // Step 2: CREATE TABLE completely fresh with standard definition
+    await querySQLiteCloud(
+      sqHost,
+      sqApiKey,
+      sqDbName,
+      "CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, html TEXT, date TEXT, userId TEXT);"
+    );
+
+    // Step 3: Insert a sample welcome landing page so the database is never empty
+    const sampleId = "proj_welcome";
+    const sampleName = "Minha Primeira Landing Page (Boas-vindas)";
+    const sampleHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Boas-vindas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-white flex flex-col items-center justify-center min-h-screen">
+  <div class="max-w-md text-center p-8 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl">
+    <h1 class="text-2xl font-bold mb-4">Banco de Dados Configurado! 🚀</h1>
+    <p class="text-zinc-400 text-sm mb-6">Sua estrutura do SQLite Cloud foi recriada com sucesso.</p>
+    <a href="#" class="px-5 py-2.5 bg-indigo-600 rounded-lg font-bold text-xs hover:bg-indigo-500 transition-all">Começar a Gerar</a>
+  </div>
+</body>
+</html>`;
+    const sampleDate = new Date().toLocaleDateString();
+    const sampleUserId = "anonymous";
+
+    const escId = sampleId.replace(/'/g, "''");
+    const escName = sampleName.replace(/'/g, "''");
+    const escHtml = sampleHtml.replace(/'/g, "''");
+    const escDate = sampleDate.replace(/'/g, "''");
+    const escUserId = sampleUserId.replace(/'/g, "''");
+
+    const insertSql = `INSERT OR REPLACE INTO projects (id, name, html, date, userId) VALUES ('${escId}', '${escName}', '${escHtml}', '${escDate}', '${escUserId}');`;
+    await querySQLiteCloud(sqHost, sqApiKey, sqDbName, insertSql);
+
+    res.json({ success: true, message: "Banco de dados recriado do zero com sucesso!" });
+  } catch (err: any) {
+    console.error("[SQLITE CLOUD] Rebuild table failure:", err.message);
+    res.status(500).json({ error: `Falha na reconstrução das tabelas: ${err.message}` });
+  }
+});
+
 // Helper to read and format cloned skills to augment the AI system instruction
 function getClonedSkillsContent(): string {
   const dirPath = path.join(process.cwd(), "cloned_skills");

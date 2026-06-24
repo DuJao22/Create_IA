@@ -282,6 +282,8 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [dbTestMessage, setDbTestMessage] = useState<{ text: string, type: "success" | "error" | "" }>({ text: "", type: "" });
   const [isTestingDb, setIsTestingDb] = useState(false);
+  const [apiTestMessage, setApiTestMessage] = useState<{ text: string, type: "success" | "error" | "" }>({ text: "", type: "" });
+  const [isTestingApi, setIsTestingApi] = useState(false);
 
   const parseAndApplyConnectionString = (connStr: string) => {
     try {
@@ -485,6 +487,116 @@ export default function App() {
       }
     } catch (err: any) {
       setDbTestMessage({ text: `❌ Conexão malsucedida: ${err.message}`, type: "error" });
+    } finally {
+      setIsTestingDb(false);
+    }
+  };
+
+  // Save and validate the Gemini API Key
+  const handleTestGeminiKey = async () => {
+    const key = geminiApiKey.trim();
+    if (!key) {
+      setApiTestMessage({ text: "Insira uma Chave API do Gemini para testar.", type: "error" });
+      return;
+    }
+
+    // Always save first
+    localStorage.setItem("layon_gemini_api_key", key);
+    setGeminiApiKey(key);
+
+    setIsTestingApi(true);
+    setApiTestMessage({ text: "Verificando chave com os servidores do Google...", type: "success" });
+    addLog("Iniciando validação e salvamento da Chave da API do Gemini...");
+
+    try {
+      // Use the stable model versions
+      const models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+      let lastError: any = null;
+      let verified = false;
+      let textResponse = "";
+
+      for (const model of models) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: "Diga apenas 'OK' para provar que funciona." }] }],
+              generationConfig: { maxOutputTokens: 5, temperature: 0.1 }
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              textResponse = text.trim();
+              verified = true;
+              break;
+            }
+          } else {
+            const errBody = await res.text();
+            lastError = new Error(`Erro HTTP ${res.status}: ${errBody}`);
+          }
+        } catch (err: any) {
+          lastError = err;
+        }
+      }
+
+      if (verified) {
+        setApiTestMessage({ text: `✅ Chave de API Válida e Salva! O Gemini respondeu com sucesso: "${textResponse}"`, type: "success" });
+        addLog("Chave de API do Gemini testada, validada e salva com sucesso!");
+      } else {
+        throw lastError || new Error("Não foi possível obter resposta de nenhum modelo Gemini.");
+      }
+    } catch (err: any) {
+      console.error("Erro de validação da API Key:", err);
+      setApiTestMessage({ text: `❌ Chave Inválida ou com Problemas: ${err.message}`, type: "error" });
+      addLog(`Falha na validação da chave Gemini: ${err.message}`);
+    } finally {
+      setIsTestingApi(false);
+    }
+  };
+
+  // Completely drop, rebuild and seed the SQLite Cloud database structure
+  const handleRebuildDatabase = async () => {
+    if (!sqliteHost || !sqliteApiKey || !sqliteDbName) {
+      setDbTestMessage({ text: "Insira as credenciais do banco para recriar a estrutura.", type: "error" });
+      return;
+    }
+
+    const confirmRebuild = window.confirm(
+      "Tem certeza que deseja REFAZER A ESTRUTURA DO BANCO DE DADOS COMPLETO do zero?\n\nIsso irá apagar as tabelas existentes (DROP TABLE) e recriá-las limpas com a estrutura correta de colunas exigida pela plataforma."
+    );
+    if (!confirmRebuild) return;
+
+    setIsTestingDb(true);
+    setDbTestMessage({ text: "Recriando estrutura física do SQLite Cloud...", type: "success" });
+    addLog("Iniciando comando de recriação estrutural do SQLite Cloud...");
+
+    try {
+      const res = await fetch("/api/rebuild-db", {
+        method: "POST",
+        headers: {
+          "X-Sqlite-Cloud-Host": sqliteHost,
+          "X-Sqlite-Cloud-Apikey": sqliteApiKey,
+          "X-Sqlite-Cloud-Dbname": sqliteDbName
+        }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setDbTestMessage({ text: `✅ ${data.message}`, type: "success" });
+        addLog("Estrutura recriada com sucesso! Recarregando lista de projetos...");
+        await loadSavedProjects();
+      } else {
+        const errDetails = await res.json().catch(() => ({}));
+        throw new Error(errDetails.error || `HTTP ${res.status}`);
+      }
+    } catch (err: any) {
+      setDbTestMessage({ text: `❌ Erro de Reconstrução: ${err.message}`, type: "error" });
+      addLog(`Falha na reconstrução estrutural: ${err.message}`);
     } finally {
       setIsTestingDb(false);
     }
@@ -3101,7 +3213,7 @@ REGRAS DE CONTEÚDO:
             <div className="flex-1 overflow-y-auto p-6 space-y-6 md:custom-scrollbar">
               
               {/* GEMINI CREDENTIALS SECTION */}
-              <div className="space-y-3.5 bg-zinc-950/40 border border-zinc-900 rounded-xl p-5">
+              <div className="space-y-4 bg-zinc-950/40 border border-zinc-900 rounded-xl p-5">
                 <div className="flex items-center gap-2 text-xs font-bold text-white font-mono uppercase tracking-wider">
                   <Key className="text-[#00d4aa]" size={15} />
                   <span>1. Chave da API Gemini (Opcional)</span>
@@ -3109,19 +3221,44 @@ REGRAS DE CONTEÚDO:
                 <p className="text-[10.5px] text-zinc-400 leading-relaxed">
                   Insira sua chave de API do Google Gemini. Se fornecida, as gerações e sugestões usarão sua chave própria, contornando limites globais.
                 </p>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-500 font-bold uppercase font-mono">Gemini API Key</label>
-                  <input 
-                    type="password"
-                    placeholder="AIzaSy..."
-                    value={geminiApiKey}
-                    onChange={(e) => {
-                      const val = e.target.value.trim();
-                      setGeminiApiKey(val);
-                      localStorage.setItem("layon_gemini_api_key", val);
-                    }}
-                    className="w-full bg-[#030407] border border-zinc-900 focus:border-[#00d4aa] rounded-lg py-2 px-3 text-xs text-white outline-none font-mono"
-                  />
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-zinc-500 font-bold uppercase font-mono">Gemini API Key</label>
+                    <input 
+                      type="password"
+                      placeholder="AIzaSy..."
+                      value={geminiApiKey}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setGeminiApiKey(val);
+                        localStorage.setItem("layon_gemini_api_key", val);
+                      }}
+                      className="w-full bg-[#030407] border border-zinc-900 focus:border-[#00d4aa] rounded-lg py-2 px-3 text-xs text-white outline-none font-mono"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTestGeminiKey}
+                        disabled={isTestingApi}
+                        className="py-1.5 px-4 bg-zinc-900 hover:bg-[#00d4aa]/15 text-zinc-200 hover:text-[#00d4aa] border border-zinc-800 hover:border-[#00d4aa]/30 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        {isTestingApi ? "Verificando..." : "Testar e Salvar Chave"}
+                      </button>
+                    </div>
+
+                    {apiTestMessage.text && (
+                      <div className={`p-2.5 rounded-lg border text-[10.5px] font-mono leading-relaxed ${
+                        apiTestMessage.type === "success" 
+                          ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-400" 
+                          : "bg-rose-950/20 border-rose-900/40 text-rose-400"
+                      }`}>
+                        {apiTestMessage.text}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -3199,19 +3336,36 @@ REGRAS DE CONTEÚDO:
                 </div>
 
                 {sqliteEnabled && (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={handleTestDatabaseSetting}
-                      disabled={isTestingDb}
-                      className="w-full sm:w-auto py-1.5 px-4 bg-zinc-900 hover:bg-[#7c5cfc]/10 text-zinc-300 hover:text-white border border-zinc-800 hover:border-[#7c5cfc]/30 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      {isTestingDb ? "Testando Conexão..." : "Testar Conexão"}
-                    </button>
+                  <div className="flex flex-col gap-3 pt-2">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={handleTestDatabaseSetting}
+                        disabled={isTestingDb}
+                        className="py-1.5 px-4 bg-zinc-900 hover:bg-[#7c5cfc]/15 text-zinc-200 hover:text-white border border-zinc-800 hover:border-[#7c5cfc]/30 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isTestingDb ? "Processando..." : "Testar Conexão"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleRebuildDatabase}
+                        disabled={isTestingDb}
+                        className="py-1.5 px-4 bg-[#7c5cfc]/10 hover:bg-[#7c5cfc]/20 text-[#a78bfa] hover:text-[#c084fc] border border-[#7c5cfc]/30 hover:border-[#7c5cfc]/50 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        <RotateCw size={11} className={isTestingDb ? "animate-spin" : ""} />
+                        Recriar Banco do Zero
+                      </button>
+                    </div>
+
                     {dbTestMessage.text && (
-                      <span className={`text-[10.5px] font-medium leading-relaxed ${dbTestMessage.type === "success" ? "text-emerald-400" : "text-rose-400"}`}>
+                      <div className={`p-2.5 rounded-lg border text-[10.5px] font-mono leading-relaxed ${
+                        dbTestMessage.type === "success" 
+                          ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-400" 
+                          : "bg-rose-950/20 border-rose-900/40 text-rose-400"
+                      }`}>
                         {dbTestMessage.text}
-                      </span>
+                      </div>
                     )}
                   </div>
                 )}
