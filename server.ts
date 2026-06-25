@@ -701,7 +701,7 @@ REGRAS DE CONTEÚDO E DESIGN COMPORTAMENTAL:
     required: ["name", "metadata", "sections"]
   };
 
-  const modelName = "gemini-2.5-flash"; // recommended text model
+  const modelName = "gemini-3.5-flash"; // recommended text model
 
   try {
     const activeAi = getAiClient(req);
@@ -722,7 +722,7 @@ Configurações adicionais se fornecidas:
 Mapeie o roteiro estrito de scroll cinematográfico de alta convicção solicitado para esta marca. Certifique-se de incluir a Hero com suporte a visual canvas de partículas/rede, a seção de visão inspirada na Apple, os grids bento de recursos, e uma CTA espetacular.`;
 
     let response;
-    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+    const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
     let lastError: any = null;
 
     for (let i = 0; i < modelsToTry.length; i++) {
@@ -981,7 +981,7 @@ REGRAS DE CONTEÚDO:
   };
 
   let response;
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
   let lastError: any = null;
 
   try {
@@ -1087,7 +1087,7 @@ app.post("/api/generate-html", async (req, res) => {
   }
 
   let response;
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
   let lastError: any = null;
 
   for (let i = 0; i < modelsToTry.length; i++) {

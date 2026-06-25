@@ -33,7 +33,8 @@ import {
   Settings,
   Database,
   Key,
-  GripVertical
+  GripVertical,
+  Edit2
 } from "lucide-react";
 
 import PreviewFrame from "./components/PreviewFrame";
@@ -258,6 +259,9 @@ export default function App() {
   const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<"react" | "html">("react");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationStep, setGenerationStep] = useState(1);
+  const [generationSubMessage, setGenerationSubMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("Pronto para gerar sua landing page.");
   const [statusType, setStatusType] = useState<"ok" | "loading" | "error" | "idle">("ok");
   const [tokenCount, setTokenCount] = useState<number | null>(null);
@@ -266,6 +270,8 @@ export default function App() {
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [isFullscreenModal, setIsFullscreenModal] = useState(false);
+  const [dev21Prompt, setDev21Prompt] = useState("");
+  const [isCanvaEditMode, setIsCanvaEditMode] = useState(false);
 
   // Drag and Drop Editor State
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -1080,14 +1086,26 @@ IMPORTANT: Never include purple defaults, generic shadows, or ugly grid margins.
       .map(s => listDescriptions[s.id as keyof typeof listDescriptions])
       .join("\n\n");
 
-    return `Create the absolute premium landing page for:
+    let basePrompt = `Create the absolute premium landing page for:
 Product Brand: "${brandName}"
 Aesthetic Directive: "${aiContext}"
 
 Order layout outline required:
 ${orderedDesc}
+`;
 
-Compile the HTML code with absolute perfection. Ready, set, go!`;
+    if (dev21Prompt && dev21Prompt.trim() !== "") {
+      basePrompt += `
+
+CRITICAL COMPONENT & INTEGRATION DIRECTIVE (21.dev prompt/theme):
+You MUST integrate the following 21.dev components, custom TSX layouts, or interactive backgrounds into the page. Convert any React/TSX references to pure vanilla HTML and CSS/JS with Tailwind and standard CDN scripts if needed (e.g. Three.js, GSAP, etc.):
+"""
+${dev21Prompt}
+"""`;
+    }
+
+    basePrompt += `\n\nCompile the HTML code with absolute perfection. Ready, set, go!`;
+    return basePrompt;
   };
 
   const buildLandingPageObject = (): TLandingPage => {
@@ -1150,7 +1168,10 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
   // Launch Gemini HTML Generation via express endpoint
   const handleGenerateHtmlPage = async () => {
     setIsGenerating(true);
-    setStatusMessage("Gerando portal de vendas com Gemini...");
+    setGenerationStep(1);
+    setGenerationProgress(5);
+    setGenerationSubMessage("Coletando diretrizes visuais e de conteúdo...");
+    setStatusMessage("Analisando parâmetros visuais...");
     setStatusType("loading");
     setLogsList([]);
     
@@ -1162,11 +1183,44 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
       addLog("Sem vídeo de fundo. Ativando motor de Arte Canvas Procedural...");
     }
 
+    await new Promise(r => setTimeout(r, 450));
+    setGenerationStep(2);
+    setGenerationProgress(15);
+    setGenerationSubMessage("Construindo instruções de design estrito e prompt de contexto...");
+    setStatusMessage("Preparando prompt do Gemini...");
+
     addLog("Construindo instruções de design e prompt de contexto...");
     const systemPrompt = buildSystemPrompt();
     const userPrompt = buildUserPrompt();
 
+    await new Promise(r => setTimeout(r, 450));
+    setGenerationStep(3);
+    setGenerationProgress(30);
+    setGenerationSubMessage("Enviando requisição ao canal Gemini (Google Cloud Node.js)...");
+    setStatusMessage("Chamando inteligência do Gemini...");
     addLog("Enviando requisição ao canal Gemini no Node.js...");
+
+    // Start a fluid incremental progress generator to keep visual interest
+    const progressInterval = setInterval(() => {
+      setGenerationProgress(prev => {
+        if (prev < 78) {
+          const stepAdd = Math.floor(Math.random() * 4) + 1;
+          const subMessages = [
+            "Computando estruturas de grid bento responsivos...",
+            "Sincronizando paleta de cores com o guia de estilo...",
+            "Adicionando biblioteca de animações GSAP...",
+            "Injetando estilos utilitários do Tailwind v4...",
+            "Polindo interações cinéticas e transições...",
+            "Processando blocos de texto e copys persuasivas...",
+            "Otimizando elementos gráficos para mobile..."
+          ];
+          const randomMsg = subMessages[Math.floor(Math.random() * subMessages.length)];
+          setGenerationSubMessage(randomMsg);
+          return prev + stepAdd;
+        }
+        return prev;
+      });
+    }, 700);
 
     try {
       const customHeaders = getHeaders();
@@ -1207,6 +1261,12 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
         data = { html: cleanedHtml };
       }
 
+      // Stop the intermediate progress interval
+      clearInterval(progressInterval);
+      setGenerationStep(4);
+      setGenerationProgress(80);
+      setGenerationSubMessage("Página compilada! Higienizando tags de encapsulamento e scripts...");
+      setStatusMessage("Processando código gerado...");
       addLog("Página compilada recebida com sucesso! Higienizando tags de encapsulamento...");
       
       const cleanHtml = data.html;
@@ -1226,6 +1286,12 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
       setHistoryProjects(extendedHistory);
       localStorage.setItem("layon_generated_history", JSON.stringify(extendedHistory));
 
+      await new Promise(r => setTimeout(r, 450));
+      setGenerationStep(5);
+      setGenerationProgress(90);
+      setGenerationSubMessage("Sincronizando e gravando página no banco de dados SQLite Cloud...");
+      setStatusMessage("Salvando no banco de dados...");
+
       // Dual persistence back up on active server/cloud database
       try {
         await fetch("/api/projects", {
@@ -1238,10 +1304,16 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
             userId: "anonymous"
           })
         });
-        addLog("Página persistida fisicamente no bando de dados.");
+        addLog("Página persistida fisicamente no banco de dados.");
       } catch (saveErr: any) {
         console.warn("Persistência em background falhou:", saveErr.message);
       }
+
+      await new Promise(r => setTimeout(r, 450));
+      setGenerationStep(6);
+      setGenerationProgress(100);
+      setGenerationSubMessage("Compilação finalizada! Renderizando visualizador responsivo...");
+      setStatusMessage("Carregando visualizador...");
 
       addLog(`Portfólio registrado! Tamanho total: ${(cleanHtml.length / 1024).toFixed(1)} KB`);
       setStatusMessage("Landing page gerada na velocidade da luz!");
@@ -1252,19 +1324,173 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
 
       // Set arbitrary safe token calculation for aesthetics of developer console
       setTokenCount(Math.floor(cleanHtml.length / 4.1));
+      
+      // Delay to show beautiful completed state
+      await new Promise(r => setTimeout(r, 800));
 
     } catch (err: any) {
+      clearInterval(progressInterval);
       console.error("Erro na geração:", err);
       addLog(`Erro crítico constatado: ${err.message}`);
       setStatusMessage(`Ocorreu um erro: ${err.message}`);
       setStatusType("error");
     } finally {
+      clearInterval(progressInterval);
       setIsGenerating(false);
     }
   };
 
+  // Canva Edit Mode helpers
+  const handleEnableCanvaEditMode = () => {
+    setIsCanvaEditMode(true);
+    addLog("Modo Canva ativado! Clique duas vezes em qualquer texto ou botão para editar, ou clique em qualquer imagem para alterar!");
+    
+    // Delay slightly to ensure iframe exists and is loaded
+    setTimeout(() => {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+
+      // Inject editing styling
+      let styleEl = doc.getElementById("canva-edit-style");
+      if (!styleEl) {
+        styleEl = doc.createElement("style");
+        styleEl.id = "canva-edit-style";
+        styleEl.innerHTML = `
+          /* Visual cue for editable items */
+          [contenteditable="true"] {
+            outline: 1px dashed rgba(124, 92, 252, 0.4) !important;
+            outline-offset: 3px !important;
+            transition: all 0.2s ease !important;
+          }
+          [contenteditable="true"]:hover {
+            outline: 2px dashed #00d4aa !important;
+            outline-offset: 4px !important;
+            background-color: rgba(0, 212, 170, 0.08) !important;
+            border-radius: 4px !important;
+            cursor: text !important;
+          }
+          [contenteditable="true"]:focus {
+            outline: 2px solid #7c5cfc !important;
+            outline-offset: 4px !important;
+            background-color: rgba(124, 92, 252, 0.12) !important;
+            border-radius: 4px !important;
+          }
+          /* Hover visual cue for images */
+          img {
+            transition: all 0.2s ease !important;
+            cursor: pointer !important;
+          }
+          img:hover {
+            outline: 3px solid #00d4aa !important;
+            outline-offset: 2px !important;
+            filter: brightness(0.85) !important;
+          }
+          /* Prevent standard anchor actions while editing */
+          a {
+            cursor: pointer !important;
+          }
+        `;
+        doc.head.appendChild(styleEl);
+      }
+
+      // Find potential text containers and make them editable
+      const textTags = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "li", "button", "a"];
+      textTags.forEach(tag => {
+        doc.querySelectorAll(tag).forEach(el => {
+          // Avoid editing complex SVG icons inside buttons/anchors directly if possible
+          if (el.querySelector("svg")) {
+            // Check if there are raw text child nodes inside to edit
+            const textNodes = Array.from(el.childNodes).filter(node => (node as any).nodeType === 3); // text node
+            if (textNodes.length > 0) {
+              el.setAttribute("contenteditable", "true");
+            }
+          } else if (el.children.length === 0 || (el.children.length === 1 && el.firstElementChild?.tagName === 'SPAN')) {
+            el.setAttribute("contenteditable", "true");
+          } else {
+            const textNodes = Array.from(el.childNodes).filter(node => (node as any).nodeType === 3);
+            if (textNodes.length > 0) {
+              el.setAttribute("contenteditable", "true");
+            }
+          }
+        });
+      });
+
+      // Hook images to allow custom Unsplash keyword or direct URL search
+      doc.querySelectorAll("img").forEach(img => {
+        img.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const currentSrc = img.getAttribute("src") || "";
+          const term = window.prompt(
+            "🎨 MODO CANVA - ALTERAR FOTO\n\nDigite uma palavra-chave para buscar do Unsplash (ex: 'ferrari', 'luxurious boat', 'smart city') ou cole a URL completa da imagem desejada:",
+            currentSrc.includes("images.unsplash.com") ? "" : currentSrc
+          );
+          if (term !== null && term.trim() !== "") {
+            let finalUrl = term;
+            if (!term.startsWith("http") && !term.startsWith("data:")) {
+              finalUrl = `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80&sig=${Math.floor(Math.random() * 100000)}&keyword=${encodeURIComponent(term)}`;
+            }
+            img.setAttribute("src", finalUrl);
+            addLog(`Imagem atualizada no visualizador para a palavra-chave: "${term}"`);
+          }
+        };
+      });
+
+      // Hook anchors to allow custom target URL or action adjustment on double-click
+      doc.querySelectorAll("a").forEach(link => {
+        link.addEventListener("dblclick", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const currentHref = link.getAttribute("href") || "#";
+          const newHref = window.prompt(
+            "🎨 MODO CANVA - DESTINO DO CTA\n\nAltere o link de redirecionamento ou WhatsApp de contato para este elemento:",
+            currentHref
+          );
+          if (newHref !== null) {
+            link.setAttribute("href", newHref);
+            addLog(`Destino do CTA alterado para: "${newHref}"`);
+          }
+        });
+      });
+
+    }, 200);
+  };
+
+  const handleSaveCanvaEdits = () => {
+    const iframe = iframeRef.current;
+    if (iframe) {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        // Clone the document to sanitize editing wrappers
+        const docClone = doc.cloneNode(true) as Document;
+        
+        // Remove style tag we added
+        const styleEl = docClone.getElementById("canva-edit-style");
+        if (styleEl) styleEl.remove();
+
+        // Remove contenteditable attributes
+        docClone.querySelectorAll("[contenteditable='true']").forEach(el => {
+          el.removeAttribute("contenteditable");
+        });
+
+        const finalHtml = "<!DOCTYPE html>\n" + docClone.documentElement.outerHTML;
+        setGeneratedHtml(finalHtml);
+        addLog("Alterações visuais do Modo Canva gravadas com absoluto sucesso!");
+      }
+    }
+    setIsCanvaEditMode(false);
+  };
+
+  const handleCancelCanvaEdits = () => {
+    setIsCanvaEditMode(false);
+    addLog("Edição do Modo Canva cancelada. Alterações rascunhadas descartadas.");
+  };
+
   // Render HTML in the iframe as state changes
   useEffect(() => {
+    if (isCanvaEditMode) return; // Do not reload and overwrite iframe contents while in Canva Mode!
     if (generatedHtml && iframeRef.current) {
       const doc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
       if (doc) {
@@ -1273,7 +1499,7 @@ Compile the HTML code with absolute perfection. Ready, set, go!`;
         doc.close();
       }
     }
-  }, [generatedHtml, device]);
+  }, [generatedHtml, device, isCanvaEditMode]);
 
   // Diagnostic HUD listener: real-time telemetry extraction from visualizer iframe
   useEffect(() => {
@@ -1946,6 +2172,23 @@ REGRAS DE CONTEÚDO:
                     onChange={(e) => setAiContext(e.target.value)}
                     className="w-full bg-[#030407] border border-zinc-900 focus:border-[#7c5cfc]/60 rounded-lg py-2 px-3 text-xs text-white outline-none transition-all resize-y font-normal"
                     placeholder="Como deve ser o tom das mensagens, público e objetivos específicos..."
+                  />
+                </div>
+
+                <div className="space-y-1.5 border-t border-zinc-900/60 pt-4 mt-3">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles size={11} className="text-[#7c5cfc] animate-pulse" />
+                    <label className="text-[10px] font-bold text-[#7c5cfc] uppercase tracking-wider block font-mono">Prompt / Tema do 21.dev (Opcional)</label>
+                  </div>
+                  <p className="text-[9px] text-zinc-500 leading-normal">
+                    Cole prompts de componentes (ex: DottedSurface, ThreeJS, etc) ou designs customizados do 21.dev para integrá-los diretamente.
+                  </p>
+                  <textarea
+                    rows={4}
+                    value={dev21Prompt}
+                    onChange={(e) => setDev21Prompt(e.target.value)}
+                    className="w-full bg-[#030407] border border-zinc-900 focus:border-[#7c5cfc]/60 rounded-lg py-2 px-3 text-xs text-white outline-none transition-all resize-y font-normal font-mono text-[10px]"
+                    placeholder="Cole aqui o prompt, código React/TSX ou design system do 21.dev..."
                   />
                 </div>
               </div>
@@ -2878,6 +3121,38 @@ REGRAS DE CONTEÚDO:
 
           {/* Core actions triggers */}
           <div className="flex items-center gap-2">
+            {generatedHtml && (
+              <button
+                onClick={() => {
+                  if (isCanvaEditMode) {
+                    handleSaveCanvaEdits();
+                  } else {
+                    setPreviewMode("html");
+                    handleEnableCanvaEditMode();
+                  }
+                }}
+                className={`py-1.5 px-3.5 rounded-lg text-xs font-bold font-mono uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border ${
+                  isCanvaEditMode 
+                    ? "bg-gradient-to-r from-emerald-600 to-teal-500 text-white border-emerald-400 animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.35)]" 
+                    : "bg-[#7c5cfc]/15 hover:bg-[#7c5cfc]/30 text-[#7c5cfc] border-[#7c5cfc]/20"
+                }`}
+                title={isCanvaEditMode ? "Salvar e Gravar Edições no HTML" : "Editar visualmente as fotos e textos (Modo Canva)"}
+              >
+                <Edit2 size={11} />
+                <span>{isCanvaEditMode ? "✓ Salvar Canva" : "Modo Canva"}</span>
+              </button>
+            )}
+
+            {isCanvaEditMode && (
+              <button
+                onClick={handleCancelCanvaEdits}
+                className="py-1.5 px-3.5 bg-red-950/20 hover:bg-red-900/35 border border-red-900/30 rounded-lg text-xs font-bold text-red-400 hover:text-red-300 transition-all cursor-pointer font-mono uppercase"
+                title="Descartar alterações e sair"
+              >
+                Cancelar
+              </button>
+            )}
+
             <button
               disabled={!generatedHtml}
               onClick={() => setIsFullscreenModal(true)}
@@ -2924,6 +3199,104 @@ REGRAS DE CONTEÚDO:
               ? "w-[768px] h-[900px]" 
               : "w-full max-w-[1280px] h-[550px] lg:h-full"
           } rounded-2xl overflow-hidden border border-zinc-900/80 shadow-2xl bg-zinc-950 flex flex-col relative`}>
+
+            {/* COMPONENT GENERATION PROGRESS OVERLAY */}
+            {isGenerating && (
+              <div className="absolute inset-0 z-50 bg-zinc-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-left overflow-y-auto">
+                <div className="w-full max-w-md bg-zinc-900/65 border border-zinc-800/80 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+                  
+                  {/* Decorative neon gradient lines */}
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#7c5cfc] via-[#00d4aa] to-[#7c5cfc] animate-pulse" />
+                  
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#7c5cfc]/20 to-[#00d4aa]/20 border border-[#7c5cfc]/30 flex items-center justify-center text-[#00d4aa]">
+                        <Sparkles className="animate-pulse" size={16} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white font-mono uppercase tracking-wider">Compilador de Landing Pages</h4>
+                        <span className="text-[10px] text-zinc-500 font-mono">Engine Gemini 2.5 • SQLite Cloud</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xl font-black text-[#00d4aa] font-mono">{generationProgress}%</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar container */}
+                  <div className="mb-6">
+                    <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-900">
+                      <div 
+                        className="h-full bg-gradient-to-r from-[#7c5cfc] to-[#00d4aa] rounded-full transition-all duration-300 relative"
+                        style={{ width: `${generationProgress}%` }}
+                      >
+                        <div className="absolute -right-1 top-0 bottom-0 w-2 bg-white animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-[10px] text-zinc-400 font-mono italic animate-pulse truncate max-w-[280px]">
+                        {generationSubMessage || "Inicializando engine..."}
+                      </span>
+                      <span className="text-[9px] text-[#7c5cfc] font-mono uppercase font-bold">Etapa {generationStep}/6</span>
+                    </div>
+                  </div>
+
+                  {/* Steps detailed state */}
+                  <div className="space-y-3.5 border-t border-zinc-800/60 pt-4.5">
+                    {[
+                      { num: 1, label: "Coleta de parâmetros visuais", desc: "Análise de copy, estilo e vídeo de fundo" },
+                      { num: 2, label: "Planejamento estrutural", desc: "Instruções rígidas para a cota de design" },
+                      { num: 3, label: "Modelagem generativa Gemini", desc: "Geração de código HTML & classes Tailwind" },
+                      { num: 4, label: "Compilação e Higienização", desc: "Processamento e injeção do roteiro GSAP" },
+                      { num: 5, label: "Sincronização Cloud", desc: "Persistência em lote no SQLite Cloud" },
+                      { num: 6, label: "Renderização visual", desc: "Construção do visualizador imersivo" }
+                    ].map((step) => {
+                      const isCompleted = generationStep > step.num;
+                      const isActive = generationStep === step.num;
+                      const isPending = generationStep < step.num;
+
+                      return (
+                        <div key={step.num} className={`flex gap-3.5 items-start transition-all duration-200 ${isPending ? "opacity-35" : "opacity-100"}`}>
+                          <div className="mt-0.5">
+                            {isCompleted ? (
+                              <div className="w-5 h-5 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                                <Check size={11} strokeWidth={3} />
+                              </div>
+                            ) : isActive ? (
+                              <div className="w-5 h-5 rounded-full bg-[#7c5cfc]/10 border border-[#7c5cfc]/50 flex items-center justify-center text-[#7c5cfc] relative shadow-[0_0_12px_rgba(124,92,252,0.3)]">
+                                <RotateCw size={10} className="animate-spin" />
+                                <span className="absolute inset-0 rounded-full border border-dashed border-[#7c5cfc] animate-ping opacity-30" />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-600 text-[10px] font-mono">
+                                {step.num}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[11px] font-bold font-mono tracking-tight ${
+                                isActive ? "text-white" : isCompleted ? "text-zinc-300" : "text-zinc-500"
+                              }`}>
+                                {step.label}
+                              </span>
+                              {isActive && (
+                                <span className="px-1.5 py-0.5 bg-[#7c5cfc]/10 text-[#7c5cfc] border border-[#7c5cfc]/20 text-[7.5px] font-mono font-black rounded uppercase tracking-wider animate-pulse">
+                                  ativo
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[9.5px] text-zinc-500 leading-relaxed truncate">{step.desc}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                </div>
+              </div>
+            )}
 
             {previewMode === "react" ? (
               <div className="flex-1 overflow-y-auto lg:custom-scrollbar select-none text-left bg-[#050510] relative">
@@ -2974,10 +3347,38 @@ REGRAS DE CONTEÚDO:
                 </div>
               </div>
             ) : (
-              <>
+              <div className="flex-1 flex flex-col relative h-full w-full">
+                {isCanvaEditMode && (
+                  <div className="absolute top-0 left-0 right-0 z-40 bg-gradient-to-r from-emerald-950 via-teal-950 to-emerald-950 border-b border-emerald-500/40 px-4 py-2.5 flex items-center justify-between text-left shadow-lg backdrop-blur-md">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                        <Edit2 size={13} className="animate-bounce" />
+                      </div>
+                      <div>
+                        <h5 className="text-[11px] font-bold text-white font-mono uppercase tracking-wider">Modo Canva Ativo</h5>
+                        <p className="text-[9.5px] text-zinc-400">Clique nos textos para editar livremente. Clique nas imagens para buscar/alterar fotos.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleCancelCanvaEdits}
+                        className="py-1 px-3 bg-zinc-900/80 hover:bg-zinc-800 text-[10px] font-bold font-mono uppercase text-zinc-400 hover:text-white rounded border border-zinc-850 cursor-pointer transition-all"
+                      >
+                        Descartar
+                      </button>
+                      <button
+                        onClick={handleSaveCanvaEdits}
+                        className="py-1 px-3 bg-gradient-to-r from-emerald-600 to-teal-500 text-[10px] font-bold font-mono uppercase text-white rounded cursor-pointer shadow-[0_0_8px_rgba(16,185,129,0.3)] hover:shadow-lg transition-all"
+                      >
+                        ✓ Salvar Edições
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <iframe 
                   ref={iframeRef}
                   className="w-full h-full border-0 bg-transparent block"
+                  style={{ paddingTop: isCanvaEditMode ? "48px" : "0px" }}
                   title="Google AI Studio Live Visualizer"
                 />
 
@@ -3086,7 +3487,7 @@ REGRAS DE CONTEÚDO:
                     </div>
                   )}
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
